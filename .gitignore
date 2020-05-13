@@ -1,3 +1,4 @@
-.vscode/
+.vscode/.ropeproject
 analysis/
 data/
+.DS_Store
