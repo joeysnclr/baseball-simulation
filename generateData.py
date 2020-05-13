@@ -2,11 +2,6 @@ import statsapi, json, requests
 from player import *
 from team import *
 
-def player_stat_data_yearByYear(playerId):
-	r = requests.get("https://statsapi.mlb.com/api/v1/people/{}?hydrate=currentTeam,team,stats(type=yearByYear(team(league)),leagueListId=mlb_hist)&site=en".format(playerId))
-	return r.json()['people'][0]
-
-
 def findPlayer(lookup_value, year):
 	lookupInfo = statsapi.lookup_player(lookup_value, season=year)
 	if lookupInfo == []:
@@ -22,18 +17,21 @@ def generatePlayer(lookup_value, year, playerId=None):
 	if playerId == None:
 		playerId = findPlayer(lookup_value, year)
 
-	playerData = player_stat_data_yearByYear(playerId)
+	playerData = statsapi.player_stat_data(playerId, type="yearByYear")
 	# get player data
-	playerName = playerData['fullName']
-	playerPosition = playerData['primaryPosition']['abbreviation']
+	playerName = "{} {}".format(playerData['first_name'], playerData['last_name'])
+	playerPosition = playerData['position']
 	outfieldPositions = ["RF", "CF", "LF"]
 	if playerPosition in outfieldPositions:
 		playerPosition = "OF"
 
+	isPitcher = playerPosition == "P"
+	playerStatGroup = "pitching" if isPitcher else "hitting"
+
 	playerStats = None
-	for season in playerData['stats'][0]['splits']:
-		if season['season'] == str(year):
-			playerStats = season['stat']
+	for statGroup in playerData['stats']:
+		if statGroup['season'] == str(year) and statGroup['group'] == playerStatGroup:
+			playerStats = statGroup['stats']
 		
 	plateAppearences = playerStats['battersFaced'] if playerPosition == "P" else playerStats['plateAppearances']
 	playerStatsSimple = {
@@ -69,5 +67,4 @@ def generateTeam(teamName, year):
 
 	return Team(teamName, roster)
 
-# generateTeam("Giants", 2010)
 
