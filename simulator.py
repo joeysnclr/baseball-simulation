@@ -3,7 +3,8 @@ from numpy.random import choice
 
 PRINT_LOG_PLATE_APPEARENCES = False
 PRINT_LOG_HALF_INNINGS = False
-PRINT_LOG_GAMES = False
+PRINT_LOG_GAMES = True
+PRINT_LOG_SEASON = True
 
 class PlateAppearance(object):
 
@@ -13,6 +14,13 @@ class PlateAppearance(object):
 		self.pitcher = pitcher
 		self.batter = batter
 		self.outcome = None
+		self.possibilities = []
+		self.probabilities = []
+		self.printLogEnabled = PRINT_LOG_PLATE_APPEARENCES
+
+	def printLog(self, message):
+		if self.printLogEnabled:
+			print(message)
 
 	""" 
 	simulates the outcome of an plate appearence between a batter and a pitcher
@@ -24,24 +32,18 @@ class PlateAppearance(object):
 	probabilities: array, chance of each possibility
 	"""
 	def simulate(self):
-		possibilities = []
-		probabilities = []
 		for stat in self.pitcher.baseProbabilities:
-			possibilities.append(stat)
+			self.possibilities.append(stat)
 			probability = (self.pitcher.baseProbabilities[stat] + self.batter.baseProbabilities[stat]) / 2
-			probabilities.append(probability)
+			self.probabilities.append(probability)
 		
-		self.outcome = choice(possibilities, 1, p=probabilities)[0]
+		# generate random outcome w/ probability
+		self.outcome = choice(self.possibilities, 1, p=self.probabilities)[0]
 		# update stats
 		self.updateStats()
-		response = {
-			"outcome": self.outcome,
-			"possibilities": possibilities,
-			"probabilities": probabilities,
-			"pitcher": self.pitcher.name,
-			"batter": self.batter.name
-		}
-		return response
+		#log
+		self.printLog("{} vs {} | {}".format(self.pitcher.name, self.batter.name, self.outcome))
+
 
 	def updateStats(self):
 		self.pitcher.simulatedStats['PA'] += 1
@@ -57,7 +59,7 @@ class HalfInning(object):
 		self.outs = 0
 		self.maxOuts = 3
 		self.bases = [False, False, False]
-		self.canWalkOff = canWalkOff
+		self.canWalkOff = canWalkOff # is true if bottom of last inning
 		self.runsNeededForWalkOff = runsNeededForWalkOff
 		self.endedWithWalkOff = False
 
@@ -66,7 +68,7 @@ class HalfInning(object):
 		self.hits = 0
 		self.walks = 0
 		self.log = []
-		self.printLogEnabled = PRINT_LOG_PLATE_APPEARENCES
+		self.printLogEnabled = PRINT_LOG_HALF_INNINGS
 
 	def printLog(self, message):
 		if self.printLogEnabled:
@@ -129,48 +131,29 @@ class HalfInning(object):
 		while self.outs < self.maxOuts:
 			pitcher = self.pitchingTeam.pitcher
 			batter = self.battingTeam.nextBatter()
-			pa = PlateAppearance(pitcher, batter).simulate()
-			paOutcome = pa['outcome']
+			pa = PlateAppearance(pitcher, batter)
+			pa.simulate()
+			paOutcome = pa.outcome
 			if paOutcome in hitOutcomes:
-				# move all runners a # of bases
+				# move all runners a # of bases, move batter to base
 				basesToMove = hitOutcomes[paOutcome]
 				self.hit(basesToMove)
 			if paOutcome in walkOutcomes:
-				# move a runner to first, move runners if needed
+				# move batter to first, move runners if needed
 				self.walk()
 			if paOutcome in outOutcomes:
 				# += 1 to outs
 				self.out()
 
-			# if walkoff is enabled and runs scored >= runsNeededForWalkOff, inning will be ended after logging
+			
+			# log plate appearence
+			self.log.append(pa)
+			# if walkoff is enabled and runs scored >= runsNeededForWalkOff, end inning
 			if self.canWalkOff and self.runs >= self.runsNeededForWalkOff:
 				self.endedWithWalkOff = True
-			# log plate appearence
-			self.printLog("{} vs {} | {} | Bases: {} | Outs: {}".format(pitcher.name, batter.name, paOutcome, self.bases, self.outs))
-			paDict = {
-				"paInfo": pa,
-				"bases": [b for b in self.bases],
-				"outs": self.outs,
-			}
-			self.log.append(paDict)
-
-			if self.endedWithWalkOff:
 				break
 
-
-
-		response = {
-			"battingTeam": self.battingTeam.name,
-			"pitchingTeam": self.pitchingTeam.name,
-			"runs": self.runs,
-			"hits": self.hits,
-			"walks": self.walks,
-			"plateAppearences": len(self.log),
-			"endedWithWalkOff": self.endedWithWalkOff,
-			"log": self.log
-			
-		}
-		return response
+		self.printLog("Runs: {} | Hits: {} | Walks: {}".format(self.runs, self.hits, self.walks))
 
 class Game(object):
 	"""docstring for Game"""
@@ -182,10 +165,29 @@ class Game(object):
 		self.topOfInning = topOfInning
 		self.endedWithWalkOff = False
 		self.gameOver = False
-		self.homeTeam.reset()
-		self.awayTeam.reset()
 		self.log = [] # list of half innings
-		self.printLogEnabled = PRINT_LOG_HALF_INNINGS
+		self.printLogEnabled = PRINT_LOG_GAMES
+
+
+	def __str__(self):
+		if self.gameOver:
+			string = "{} ({} - {}) vs {} ({} - {}) Final Score: {}".format(
+				self.homeTeam.name,
+				self.homeTeam.wins,
+				self.homeTeam.losses,
+				self.awayTeam.name,
+				self.awayTeam.wins,
+				self.awayTeam.losses,
+				self.getScoreString())
+		else:
+			string = "{} ({} - {}) vs {} ({} - {})".format(
+				self.homeTeam.name,
+				self.homeTeam.wins,
+				self.homeTeam.losses,
+				self.awayTeam.name,
+				self.awayTeam.wins,
+				self.awayTeam.losses)
+		return string
 
 	def printLog(self, message):
 		if self.printLogEnabled:
@@ -206,6 +208,7 @@ class Game(object):
 		return None
 
 	def isTied(self):
+
 		return self.homeTeam.runs == self.awayTeam.runs
 
 	def getScore(self):
@@ -219,6 +222,7 @@ class Game(object):
 		self.awayTeam.runs = awayTeamRuns
 
 	def getScoreString(self):
+
 		return "{} - {}".format(self.getScore()['home'], self.getScore()['away'])
 
 	def getInningHalfString(self):
@@ -226,84 +230,172 @@ class Game(object):
 			return "Top"
 		return "Bottom"
 
+	def getGameStateString(self):
+		return "{} | {} of Inning: {}".format(self.getScoreString(), self.getInningHalfString(), self.inning)
+
+	def isBottomOfLastInning(self):
+		return self.inning == self.maxInnings and not self.topOfInning
+
+	def dontPlayBottomOfLast(self):
+		return self.inning == self.maxInnings and self.getWinningTeam() == self.homeTeam and self.topOfInning
+
 	def simulate(self):
-		self.printLog("{} of Inning {} | {}".format(self.getInningHalfString(), self.inning, self.getScoreString()))
-		while self.inning <= self.maxInnings:
-			if self.inning == self.maxInnings and self.getWinningTeam() == self.homeTeam and not self.topOfInning:
-				# game is over if bottom of the last inning and home team is winning
-				break
-
+		# reset teams plate appearences, runs, creates lineup
+		self.homeTeam.newGame()
+		self.awayTeam.newGame()
+		while not self.gameOver:
 			# simulate bottom/top of inning, add runs for batting team
-			if self.topOfInning: # is top of inning
-				halfInning = HalfInning(self.awayTeam, self.homeTeam).simulate()
-				self.awayTeam.runs += halfInning['runs']
-			else: # is bottom of inning
-				# enables walk off if bottom of last inning
-				canWalkOff = False
-				walkOffRunsNeeded = 0
-				if self.inning == self.maxInnings:
-					canWalkOff = True
-					walkOffRunsNeeded = self.awayTeam.runs - self.homeTeam.runs + 1
-				halfInning = HalfInning(self.homeTeam, self.awayTeam, canWalkOff, walkOffRunsNeeded).simulate()
-				self.homeTeam.runs += halfInning['runs']
-			
 
-			if halfInning['endedWithWalkOff']: # set game to ended with walk off if inning ended in walk off
+			if self.topOfInning: # is top of inning
+				battingTeam = self.awayTeam
+				pitchingTeam = self.homeTeam
+			else: # is bottom of inning
+				battingTeam = self.homeTeam
+				pitchingTeam = self.awayTeam
+			# enables walk off if bottom of last inning
+			canWalkOff = False
+			walkOffRunsNeeded = 0
+			if self.isBottomOfLastInning():
+				canWalkOff = True
+				walkOffRunsNeeded = self.awayTeam.runs - self.homeTeam.runs + 1
+			# simulates inning
+			halfInning = HalfInning(battingTeam, pitchingTeam, canWalkOff, walkOffRunsNeeded)
+			halfInning.simulate()
+			battingTeam.runs += halfInning.runs
+			
+			# log half inning
+			self.log.append(halfInning)
+
+
+
+			if halfInning.endedWithWalkOff: # set game to ended with walk off if inning ended in walk off
 				self.endedWithWalkOff = True
 
-			# log half inning
-			self.printLog("{} of Inning {} | {}".format(self.getInningHalfString(), self.inning, self.getScoreString()))
-			haDict = {
-				"haInfo": halfInning,
-				"inning": self.inning,
-				"top": self.topOfInning,
-				"score": {
-					"home": self.homeTeam.runs,
-					"away": self.awayTeam.runs
-				},
-				"log": halfInning['log']
-			}
-			self.log.append(haDict)
-
 			# if bottom of last inning and game is tied, add one more inning
-			if self.inning == self.maxInnings and self.isTied() and not self.topOfInning: # inning + 1 because we already added 1 to the inning once it was simulated
+			if self.isBottomOfLastInning() and self.isTied(): # inning + 1 because we already added 1 to the inning once it was simulated
 				self.maxInnings += 1
 
-			# prepare next half inning
-			if self.topOfInning:
-				self.topOfInning = False
+			# game is over if top of the last inning and home team is winning
+			if self.dontPlayBottomOfLast():
+				self.gameOver = True
+
+			# game is over if bottom of last inning and game is not tied
+			if self.isBottomOfLastInning() and not self.isTied():
+				self.gameOver = True
 			else:
-				self.inning += 1
-				self.topOfInning = True
+				# prepare next half inning
+				if self.topOfInning:
+					self.topOfInning = False
+				else:
+					self.inning += 1
+					self.topOfInning = True
+
+
+		self.printLog(self.getGameStateString())
 		self.gameOver = True
-		response = {
-			"log": self.log,
-			"winningTeam": self.getWinningTeam(),
-			"losingTeam": self.getLosingTeam(),
-			"score": self.getScore(),
-			"walkOff": self.endedWithWalkOff
-		}
-		return response
+		self.getWinningTeam().wins += 1
+		self.getLosingTeam().losses += 1
 
 class Season(object):
 	"""docstring for Season"""
 	def __init__(self, teams):
 		self.teams = teams # list of Teams
-		self.games = 162
-		self.gamesPlayed = 0
+		self.gameDays = 162
+		self.daysPlayed = 0
+		self.gamesInSeries = 3
+		self.series = round(self.gameDays / self.gamesInSeries)
+		self.gameDays = self.series * self.gamesInSeries
+		self.seriesPlayed = 0
+		self.schedule = self.createSchedule()
+		self.printLogEnabled = PRINT_LOG_SEASON
 
-	def simulate(self):
-		while self.gamesPlayed <= self.games:
-			game = Game(self.teams[0], self.teams[1])
-			gameInfo = game.simulate()
-			if game.getWinningTeam() != None:
-				game.getWinningTeam().wins += 1
-				game.getLosingTeam().losses += 1
-			else:
-				game.awayTeam.ties += 1
-				game.homeTeam.ties += 1
-			print(game.getScoreString())
-			self.gamesPlayed += 1
+	def printLog(self, message):
+		if self.printLogEnabled:
+			print(message)
+
+	def createSchedule(self):
+		# https://en.wikipedia.org/wiki/Round-robin_tournament
+
+		teamPool = self.teams[:-1] # all teams except last
+		standStill = self.teams[-1] # last team
+		schedule = []
+
+		for i in range(self.series):
+			matches = [
+				[teamPool[0], standStill] # first and last
+			]
+			unmatchedTeams = teamPool[1:]
+			matchesLeft = int(len(unmatchedTeams) / 2)
+			for j in range(matchesLeft):
+				team1 = unmatchedTeams[j]
+				team2 = unmatchedTeams[len(unmatchedTeams) - 1 - j]
+				matches.append([team1, team2])
+
+			# if i % 2 == 1: flip home and away
+			if i % 2 == 0:
+				for m in matches:
+					m.reverse()
+
+			# turns matches into n (self.gamesInSeries) Game objects and
+			for i in range(self.gamesInSeries):
+				day = []
+				for m in matches:
+					g = Game(m[0], m[1])
+					day.append(g)
+				schedule.append(day)
+
+
+			teamPool.insert(0,teamPool.pop()) # move teams right by one
+		return schedule
+
+	def printSchedule(self):
+		for i, day in enumerate(self.schedule):
+			print("Day {}".format(i+1))
+			for game in day:
+				print(game)
+			print("")
+
+	def printUpcomingGames(self):
+		day = self.schedule[self.daysPlayed]
+		print("Day {}".format(self.daysPlayed + 1))
+		for game in day:
+			print(game)
+
+	def printStandings(self):
+		teamsSorted = sorted(self.teams, key=lambda x: x.wins, reverse=True)
+		for t in teamsSorted:
+			print(t)
+
+	def printLeagueLeaders(self, stat, n, group="batting"):
+		leaguePlayers = []
+		for t in self.teams:
+			for p in t.roster:
+				if group == "batting":
+					if p.position != "P":
+						leaguePlayers.append(p)
+				else: #group == "pitching"
+					if p.position == "P":
+						leaguePlayers.append(p)
+		reverse = True if group == "batting" else False
+
+		leaguePlayers.sort(key=lambda x: x.simulatedStats[stat], reverse=reverse)
+		for i, p in enumerate(leaguePlayers[:n]):
+			print("{} | {} | {}".format(i, p.simulatedStats[stat], p))
+
+	def simulateNextDay(self):
+		if self.daysPlayed < self.gameDays:
+			day = self.schedule[self.daysPlayed]
+			self.printLog("Day {}".format(self.daysPlayed + 1))
+			for game in day:
+				game.simulate()
+				self.printLog(game)
+			self.daysPlayed += 1
+
+	def simulateRestOfSeason(self):
+		while self.daysPlayed < self.gameDays:
+			self.simulateNextDay()
+
+
 		
 
 
