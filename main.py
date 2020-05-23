@@ -1,4 +1,4 @@
-import pickle
+import pickle, time
 
 from generateData import *
 from player import *
@@ -14,6 +14,7 @@ def loadData(filename):
 	with open(filename, 'rb') as data:
 		return pickle.load(data)
 
-
+start = time.time()
 x = generatePlayer("pujols", 2010)
 print(x.seasonStats)
+print(time.time() - start)
