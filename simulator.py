@@ -1,8 +1,8 @@
 from player import Player
 from numpy.random import choice
 
-PRINT_LOG_PLATE_APPEARENCES = False
-PRINT_LOG_HALF_INNINGS = False
+PRINT_LOG_PLATE_APPEARENCES = True
+PRINT_LOG_HALF_INNINGS = True
 PRINT_LOG_GAMES = True
 PRINT_LOG_SEASON = True
 
